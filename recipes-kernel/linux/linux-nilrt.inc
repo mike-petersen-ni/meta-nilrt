@@ -1,5 +1,6 @@
 inherit kernel
 require recipes-kernel/linux/linux-yocto.inc
+require recipes-kernel/linux/linux-nilrt-cves.inc
 
 KBRANCH = "nilrt/${NI_RELEASE_VERSION}/${LINUX_VERSION}"
 GIT_KERNEL_REPO = "linux.git"
