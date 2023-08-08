@@ -1,7 +1,7 @@
 inherit kernel
 require recipes-kernel/linux/linux-yocto.inc
 
-KBRANCH = "nilrt/${NI_RELEASE_VERSION}/${LINUX_VERSION}"
+KBRANCH = "prototype/pxe-nfs-root"
 GIT_KERNEL_REPO = "linux.git"
 
 machine_srcrev="${SRCREV}"
@@ -38,7 +38,7 @@ INHIBIT_PACKAGE_DEBUG_SPLIT="1"
 do_kernel_configme[depends] += "libgcc:do_populate_sysroot"
 
 SRC_URI = "\
-	${NILRT_GIT}/${GIT_KERNEL_REPO};protocol=https;nocheckout=1;branch=${KBRANCH} \
+	git://github.com/mike-petersen-ni/${GIT_KERNEL_REPO};protocol=https;nocheckout=1;branch=${KBRANCH} \
 	file://export-kernel-headers.sh \
 "
 # Generically use the *latest* rev from the kernel source branch, if none is
