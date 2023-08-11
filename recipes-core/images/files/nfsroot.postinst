@@ -1,27 +1,21 @@
 #!/bin/bash
 #
-# Copyright (c) 2013,2017 National Instruments
+# Copyright (c) 2013,2017,2023 National Instruments
 #
 
 # Something in base is installing /etc/natinst/share/uninstall that may not be
 # getting installed for SystemLink. nisid will fail if this directory doesn't
 # install, so this component ought to install /etc/natinst/share/uninstall
 # itself, regardless of if some other component ultimately will too.
-mkdir -p -m 755 /mnt/userfs/etc/natinst/share/uninstall
-
-# Delete the enable_initramfs variable so the target will no longer try to boot
-# using an initramfs in runmode.  This also disables the usage of an initramfs on
-# older runmodes and safemode combinations.  The enable_initramfs variable is
-# only set during provisioning, so it should remain unset for this target.
-grub-editenv /boot/grub/grubenv unset enable_initramfs
+mkdir -p -m 755 /etc/natinst/share/uninstall
 
 # Enable ssh by default when installing SystemLink.
 /usr/local/natinst/bin/nirtcfg -s section=systemsettings,token=sshd.enabled,value=True
 
 # Add the memory reservation for Base. We assert that if the section exists,
 # it's already been added.
-if ! grep -q 'RtLinuxMemReserve' /mnt/userfs/etc/natinst/share/ni-rt.ini; then
-	cat >> /mnt/userfs/etc/natinst/share/ni-rt.ini <<EOF
+if ! grep -q 'RtLinuxMemReserve' /etc/natinst/share/ni-rt.ini; then
+	cat >> /etc/natinst/share/ni-rt.ini <<EOF
 [RtLinuxMemReserve]
 Base=24
 EOF
@@ -35,15 +29,12 @@ fi
 if grep -qs artemis /sys/firmware/devicetree/base/compatible ; then
 
     # configure the partitions to mount by label in fstab
-    sed -i '/ubifs/d' /mnt/userfs/etc/fstab
-    echo LABEL=nibootfs         /boot                ext4       sync           0  0 >> /mnt/userfs/etc/fstab
-    echo LABEL=niconfig         /etc/natinst/share   ext4       sync           0  0 >> /mnt/userfs/etc/fstab
-    mkdir -p /etc/natinst/share
+    sed -i '/ubifs/d' /etc/fstab
 
     # configure the path for fw_printenv to read environmental variables from u-boot
     # replace /dev/mtd4 and /dev/mtd5 with /boot/uboot/uboot.env
-    sed -i '/mtd/d' /mnt/userfs/etc/fw_env.config
-    echo /boot/uboot/uboot.env         0x0000         0x20000 >> /mnt/userfs/etc/fw_env.config
+    sed -i '/mtd/d' /etc/fw_env.config
+    echo /boot/uboot/uboot.env         0x0000         0x20000 >> /etc/fw_env.config
 
 fi
 
@@ -51,62 +42,28 @@ arch="`uname -m`"
 mount_point="/boot"
 class="`/sbin/fw_printenv -n TargetClass`"
 
-if [ "$arch" = "x86_64" ]; then
-    echo "" >> /mnt/userfs/etc/fstab
-    echo LABEL=nibootfs         /boot                ext4       sync           0  0 >> /mnt/userfs/etc/fstab
-    echo LABEL=niconfig         /etc/natinst/share   ext4       sync           0  0 >> /mnt/userfs/etc/fstab
-fi
 
-if [ "$arch" = "armv7l" ]; then
-	kernel="/mnt/userfs/boot/tmp/linux_runmode.itb"
-elif [ "$arch" = "x86_64" ]; then
-	kernel="/mnt/userfs/boot/tmp/runmode"
+if [ "$arch" = "x86_64" ]; then
+	kernel="/boot/runmode"
 else
 	echo >&2 "ERROR: Unsupported platform"
 	exit 1
 fi
 
-# in normal operation, /boot better exist
-awk '{print $2;}' < /proc/mounts | grep -q /boot || exit 1
-
 # Give hwclock CAP_SYS_TIME capabilties
-/usr/sbin/setcap CAP_SYS_TIME+ep /mnt/userfs/sbin/hwclock.util-linux
-
-# install the kernel
-[ "$arch" = "x86_64" ] && rm -rf /boot/runmode
-if mv "$kernel" "$mount_point"; then
-	# Remove the tmp path from the rootfs
-	rmdir "`dirname "$kernel"`"
-else
-	exit 1
-fi
+/usr/sbin/setcap CAP_SYS_TIME+ep /sbin/hwclock.util-linux
 
 # Use persistent names on PXI, not on any other targets
-[ "$class" = "PXI" ] || touch /mnt/userfs/etc/udev/rules.d/80-net-name-slot.rules
+[ "$class" = "PXI" ] || touch /etc/udev/rules.d/80-net-name-slot.rules
 
 # Enable core dumps on PXI, not on any other targets
 [ "$class" = "PXI" ] && echo "* soft core unlimited" > /etc/security/limits.d/allow-core-dumps.conf
 
 # update module dependencies
-RUNMODE_KERNEL_VERSION=$(/bin/ls -1 /mnt/userfs/lib/modules | head -n 1)
-if ! /usr/sbin/chroot /mnt/userfs /sbin/depmod -a "${RUNMODE_KERNEL_VERSION}"; then
+RUNMODE_KERNEL_VERSION=$(/bin/ls -1 /lib/modules | head -n 1)
+if ! /sbin/depmod -a "${RUNMODE_KERNEL_VERSION}"; then
 	exit 1
 fi
 
-# Hack for bug 975962, put /boot back to a+rw
-if [ "$arch" = "armv7l" ]; then
-	chmod 0777 /boot
-fi
-
 # Import NI signing key for subsequent opkg operations
-/usr/sbin/chroot /mnt/userfs/ opkg-key populate
-
-# Find the gpg-agent process launched as a result of the previous command under
-# /mnt/userfs and kill it to prevent a lock on the root file system (BUG 1107561)
-for pid in $(pidof gpg-agent); do
-	root_dir=$(readlink "/proc/${pid}/root")
-	if [ "$root_dir" = "/mnt/userfs" ]; then
-		kill ${pid}
-		break
-	fi
-done
+opkg-key populate

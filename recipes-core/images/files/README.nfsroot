@@ -1,0 +1,6 @@
+things to mention:
+ - strongly recommend mounting nilrt roots as noexec,nosuid to avoid
+   server inadvertently executing nirlt code
+ - suggest using btrfs subvolumes for nilrt roots, with readonly
+   snapshot as a template and MAC-specific subvolumes for machines to
+   boot from
